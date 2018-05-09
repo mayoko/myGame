@@ -1,0 +1,21 @@
+.flex-container {
+  display: flex;
+  width: 500px;
+  height: 500px;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-content: center;
+  border: 1px solid #aaa;
+  background-color: #aaa;
+}
+
+.gameCell {
+  width: 100px;
+  height: 100px;
+  border-radius: 10px;
+  box-sizing: border-box;
+  margin: 6px;
+  text-align: center;
+  line-height: 100px;
+  font-size: 40px;
+}
