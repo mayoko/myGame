@@ -33,7 +33,7 @@ class State {
   }
   // 指示された方向に動いた際の次の State を求める
   calcNextState(dir) {
-    nextState = new State();
+    let nextState = new State();
     // コピーする
     for (let i = 0; i < 16; i++) {
       nextState.board[i] = this.board[i];
@@ -114,7 +114,7 @@ class State {
         nextBoard[ny*4+nx] = this.board[j];
         nextMerge[ny*4+nx] = this.merge[j];
       }
-      this.board = nextCells;
+      this.board = nextBoard;
       this.merge = nextMerge;
       let nextMoveCells = [];
       for (let i = 0; i < this.moveCells.length; ++i) {
@@ -179,41 +179,32 @@ class Game {
   }
   // キー入力に対応してゴニョゴニョする
   move() {
-    if (this.isOver) return;
-    let result = false;
+    if (this.state.isDie()) return;
+    let nextState;
     if (global.keys[38]) { // up
-      result = this._moveUp();
+      nextState = this.state.calcNextState(0);
     } else if (global.keys[39]) { // right
-      this._rotate(3);
-      result = this._moveUp();
-      this._rotate(1);
+      nextState = this.state.calcNextState(1);
     } else if (global.keys[40]) { // down
-      this._rotate(2);
-      result = this._moveUp();
-      this._rotate(2);
+      nextState = this.state.calcNextState(2);
     } else if (global.keys[37]) { // left
-      this._rotate(1);
-      result = this._moveUp();
-      this._rotate(3);
+      nextState = this.state.calcNextState(3);
     }
-    console.log(result);
     // いずれかのセルが動いたならば
-    if (result) {
-      // 空いているセルのいずれかにセルを 2 or 4 を追加
-      let empty = [];
-      for (let i = 0; i < 4; i++) {
-        for (let j = 0; j < 4; j++) {
-          if (this.cells[i*4+j].num === 0) {
-            empty.push(i*4+j);
-          }
-        }
-      }
+    if (nextState.moveCells.length > 0) {
+      // ランダムに数字を挿入する処理
+      const empty = nextState.getEmptyCells();
       const num = (Math.random() < 0.75 ? 2 : 4);
       const index = empty[Math.floor(Math.random() * empty.length)];
-      this.cells[index].changeAttrib(num);
+
+      // なんやかんや
+
+      // アニメーション
+      this.animation.update(nextState);
+
+      // state を更新
+      this.state = nextState;
     }
-    // 死んでないかチェック
-    this.isOver = this._check();
   }
 }
 
@@ -237,22 +228,30 @@ class Animation {
     {
       let progress = 0;
       const time = Settings.ANIMATION_GEN_TIME;
+      let start = null;
 
-      const update = (timestamp) => {
-        progress = timestamp / time;
+      const proc = (timestamp) => {
+        if (!start) {
+          start = timestamp;
+        }
+        progress = (timestamp - start) / time;
         progress = Math.min(progress, 1);
 
         if (progress >= 0) {
-          for (move of moveCells) {
-            this.moveCells[fy * 4 + fx].translate(move.fx, move.fy, move.tx, move.ty, process);
+          for (const move of state.moveCells) {
+            this.cells[move.fy * 4 + move.fx].translate(move.fx, move.fy, move.tx, move.ty, progress);
           }
         }
 
         if (progress < 1) {
-          requestAnimationFrame(update);
+          requestAnimationFrame(proc);
         }
       }
-      requestAnimationFrame(update);
+      requestAnimationFrame(proc);
+
+      for (const move of state.moveCells) {
+        this.cells[move.ty * 4 + move.tx] = this.cells[move.fy * 4 + move.fx];
+      }
     }
     // 合体させるアニメーションと新しく現れるアニメーション
     {
@@ -269,10 +268,14 @@ class Animation {
     }
     this.cells[y*4+x] = new Cell(num, screen);
     let progress = 0;
+    let start = null;
     const time = Settings.ANIMATION_GEN_TIME;
 
     const update = (timestamp) => {
-      progress = timestamp / time;
+      if (!start) {
+        start = timestamp;
+      }
+      progress = (timestamp - start) / time;
       progress = Math.min(progress, 1);
 
       if (progress >= 0) {
