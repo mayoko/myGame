@@ -5,7 +5,10 @@ let global = {
 let Settings = {
   CELL_WIDTH: 100,
   CELL_HEIGHT: 100,
-  CELL_MARGIN: 6
+  CELL_MARGIN: 12,
+  ANIMATION_SWELLING: 8,
+  ANIMATION_GEN_TIME: 200,
+  FONT_SIZE: 40
 };
 
 // ゲームの状態を管理するクラス
@@ -17,8 +20,12 @@ class State {
     this.merge = [];
     // move したときに, 動いたセルはどこからどこへ行ったのか
     this.moveCells = [];
-    // move があった際に, どこかの要素が動いたかどうかを判定する
-    this.isMove = false;
+    // move どの向きに移動したのかを求める
+    // 0: up
+    // 1: right
+    // 2: down
+    // 3: left
+    this.move = -1;
     for (let i = 0; i < 16; i++) {
       this.board.push(0);
       this.merge.push(false);
@@ -49,6 +56,11 @@ class State {
       nextState._rotate(1);
       nextState._moveUp();
       nextState._rotate(3);
+    }
+    // 動いてたら動いてたという情報を与える
+    this.move = -1;
+    if (this.moveCells.length > 0) {
+      this.move = dir;
     }
     return nextState;
   }
@@ -87,8 +99,9 @@ class State {
   }
   // セルの値を書き換える(ランダムに出現するのをイメージ)
   // だけど別の用途で使ってもいいやという
-  rewriteCells(index, value) {
-    this.board[index] = value;
+  // y, x: 場所
+  rewriteCells(y, x, value) {
+    this.board[y*4 + x] = value;
   }
   // board を時計回りに回転させる
   _rotate(rot) {
@@ -156,18 +169,13 @@ class Game {
   constructor() {
     // 制御するセルを指定
     this.screen = document.getElementById("gameBoard");
-    // セルの集合を定義
-    this.cells = [];
-    for (let i = 0; i < 16; i++) {
-      const y = Math.floor(i / 4), x = i % 4;
-      const cell = new Cell(y, x);
-      cell.changeAttrib(0);
-      this.cells.push(cell);
-      this.screen.appendChild(cell.elem);
-    }
-    this.cells[0].changeAttrib(128);
-    this.cells[3].changeAttrib(4096);
-    this.isOver = false;
+    this.animation = new Animation(this.screen);
+    this.state = new State();
+    // 初期状態として 2 つ cell を入れておく
+    this.state.rewriteCells(2, 1, 2);
+    this.state.rewriteCells(3, 3, 2);
+    this.animation.generate(this.screen, 2, 1, 2, 1);
+    this.animation.generate(this.screen, 3, 3, 2, 1);
   }
   // キー入力に対応してゴニョゴニョする
   move() {
@@ -209,15 +217,132 @@ class Game {
   }
 }
 
-// アニメーションを管理するクラス
+class Animation {
+  constructor(screen) {
+    // 下に並べて置くセル
+    this.bottomCells = [];
+    for (let i = 0; i < 16; i++) {
+      const y = Math.floor(i / 4), x = i % 4;
+      const cell = new Cell(0, screen);
+      cell.setPos(y, x);
+      this.bottomCells.push(cell);
+    }
+    this.cells = [];
+  }
+  // 指定したセル群を移動させる -> 合体させる -> 新しい数字が表れる
+  // 引数：State クラス
+  // 最後に merge したところから数字を登場させる
+  update(state) {
+    // 移動するアニメーション
+    {
+      let progress = 0;
+      const time = Settings.ANIMATION_GEN_TIME;
+
+      const update = (timestamp) => {
+        progress = timestamp / time;
+        progress = Math.min(progress, 1);
+
+        if (progress >= 0) {
+          for (move of moveCells) {
+            this.moveCells[fy * 4 + fx].translate(move.fx, move.fy, move.tx, move.ty, process);
+          }
+        }
+
+        if (progress < 1) {
+          requestAnimationFrame(update);
+        }
+      }
+      requestAnimationFrame(update);
+    }
+    // 合体させるアニメーションと新しく現れるアニメーション
+    {
+      // next target
+    }
+  }
+  // 数字が表れる
+  // screen: 親要素
+  // [y, x] 座標に num を登場させるアニメーション
+  // type: アニメーションの仕方(0: 特に何も 1: 広がる感じ(ランダムに表れるやつ) 2: 広がってから落ち着く(合体するやつ))
+  generate(screen, y, x, num, type=0) {
+    if (this.cells[y*4 + x]) {
+      screen.removeChild(this.cells[y*4 + x].elem);
+    }
+    this.cells[y*4+x] = new Cell(num, screen);
+    let progress = 0;
+    const time = Settings.ANIMATION_GEN_TIME;
+
+    const update = (timestamp) => {
+      progress = timestamp / time;
+      progress = Math.min(progress, 1);
+
+      if (progress >= 0) {
+        this.cells[y*4+x].appear(y, x, progress, type);
+      }
+
+      if (progress < 1) {
+        requestAnimationFrame(update);
+      }
+    }
+    requestAnimationFrame(update);
+  }
+}
+
 // Cell を管理するクラス
 class Cell {
-  constructor(y, x) {
+  // num: 数字
+  // screen: 親要素
+  constructor(num, screen) {
     this.elem = this._initElement();
-    this.elem.style.left = `${y * (Settings.CELL_HEIGHT + Settings.CELL_MARGIN) + Settings.CELL_MARGIN}px`;
-    this.elem.style.top = `${x * (Settings.CELL_WIDTH + Settings.CELL_MARGIN) + Settings.CELL_MARGIN}px`;
-    this.num = 0;
+    screen.appendChild(this.elem);
+    this.changeAttrib(num);
     this.merge = false;
+  }
+  // 移動する
+  // fx, fy: どこから
+  // tx, ty: どこへ
+  // process: 進捗率
+  translate(fx, fy, tx, ty, process) {
+    const x = fx + (tx - fx) * process;
+    const y = fy + (ty - fy) * process;
+    const posX = x * (Settings.CELL_WIDTH + Settings.CELL_MARGIN) + Settings.CELL_MARGIN;
+    const posY = y * (Settings.CELL_HEIGHT + Settings.CELL_MARGIN) + Settings.CELL_MARGIN;
+    this.elem.style.left = `${posX}px`;
+    this.elem.style.top = `${posY}px`;
+  }
+  // セルを配置
+  // y, x: 配置する位置
+  setPos(y, x) {
+    this.appear(y, x, 0);
+  }
+  // 新しいセルが現れるアニメーション
+  // y, x: 出てくる位置
+  // process: 進捗率
+  // type: アニメーションの仕方(0: 特に何も 1: 広がる感じ(ランダムに表れるやつ) 2: 広がってから落ち着く(合体するやつ))
+  appear(y, x, progress, type=0) {
+    let height = Settings.CELL_HEIGHT;
+    let width = Settings.CELL_WIDTH;
+    let posY = y * (Settings.CELL_HEIGHT + Settings.CELL_MARGIN) + Settings.CELL_MARGIN;
+    let posX = x * (Settings.CELL_WIDTH + Settings.CELL_MARGIN) + Settings.CELL_MARGIN;
+    let fontSize = Settings.FONT_SIZE;
+    if (type === 1) {
+      height = Settings.CELL_HEIGHT * progress;
+      width = Settings.CELL_WIDTH * progress;
+      posX = x * (Settings.CELL_WIDTH + Settings.CELL_MARGIN) + Settings.CELL_MARGIN + (Settings.CELL_WIDTH - width) / 2;
+      posY = y * (Settings.CELL_HEIGHT + Settings.CELL_MARGIN) + Settings.CELL_MARGIN + (Settings.CELL_HEIGHT - height) / 2;
+      fontSize = Settings.FONT_SIZE * progress;
+    } else if (type === 2) {
+      height = Settings.CELL_HEIGHT + Settings.ANIMATION_SWELLING * Math.sin(Math.PI * progress);
+      width = Settings.CELL_WIDTH + Settings.ANIMATION_SWELLING * Math.sin(Math.PI * progress);
+      posX = x * (Settings.CELL_WIDTH + Settings.CELL_MARGIN) + Settings.CELL_MARGIN + (Settings.CELL_WIDTH - width) / 2;
+      posY = y * (Settings.CELL_HEIGHT + Settings.CELL_MARGIN) + Settings.CELL_MARGIN + (Settings.CELL_HEIGHT - height) / 2;
+      fontSize = Settings.FONT_SIZE * (height / Settings.CELL_HEIGHT);
+    }
+    this.elem.style.left = `${posX}px`;
+    this.elem.style.top = `${posY}px`;
+    this.elem.style.height = `${height}px`;
+    this.elem.style.width = `${width}px`;
+    this.elem.style.fontSize = `${fontSize}px`;
+    this.elem.style.lineHeight = `${height}px`;
   }
   // セルの値を変更する
   changeAttrib(num) {
@@ -281,8 +406,6 @@ class Cell {
   _initElement() {
     const result = document.createElement("div");
     result.classList.add("gameCell");
-    result.style.height = `${Settings.CELL_HEIGHT}px`;
-    result.style.width = `${Settings.CELL_WIDTH}px`;
     return result;
   }
 }
