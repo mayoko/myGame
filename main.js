@@ -279,6 +279,61 @@ class Animation {
       }
       requestAnimationFrame(proc);
     }
+    // 数字が合体して数字が表れるアニメーション
+    {
+      // removeChild する要素の index
+      let deleteIndex = [];
+      // 数を倍にする要素の index
+      let animationIndex = [];
+      // merge が true になる場所に向かっているセルは必ず二つあるので, 一つは delete に入れてもう一つは animation に入れる
+      for (let y = 0; y < 4; ++y) {
+        for (let x = 0; x < 4; ++x) {
+          if (state.merge[y*4+x]) {
+            // this.pos から index を二つ探す
+            let index = [];
+            this.pos.forEach((value, key, map) => {
+              if (value.x === x && value.y === y) {
+                index.push(key);
+              }
+            });
+            deleteIndex.push(index[0]);
+            animationIndex.push(index[1]);
+          }
+        }
+      }
+
+      let progress = 0;
+      const time = Settings.ANIMATION_GEN_TIME;
+      let start = null;
+      
+      const proc = () => {
+        if (!start) {
+          start = new Date();
+        }
+        let timestamp = new Date();
+        progress = (timestamp - start) / time;
+        console.log(progress);
+        progress = Math.min(progress, 1);
+
+        if (progress >= 0) {
+          for (let index of animationIndex) {
+            let p = this.pos.get(index);
+            this.cells[index].changeAttrib(state.board[p.y*4+p.x]);
+            this.cells[index].appear(this.pos.get(index).y, this.pos.get(index).x, progress, 2);
+          }
+        }
+
+        if (progress < 1) {
+          requestAnimationFrame(proc);
+        } else {
+          for (let index of deleteIndex) {
+            this.screen.removeChild(this.cells[index].elem);
+            this.cells[index] = null;
+          }
+        }
+      }
+      setTimeout(proc, Settings.ANIMATION_GEN_TIME*1.1);
+    }
   }
   // 数字が表れる
   // screen: 親要素
