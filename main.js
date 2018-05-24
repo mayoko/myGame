@@ -189,6 +189,8 @@ class Game {
       nextState = this.state.calcNextState(2);
     } else if (global.keys[37]) { // left
       nextState = this.state.calcNextState(3);
+    } else {
+      return;
     }
     // いずれかのセルが動いたならば
     if (nextState.moveCells.length > 0) {
@@ -204,6 +206,7 @@ class Game {
 
       // state を更新
       this.state = nextState;
+      console.log(this.state.board);
     }
   }
 }
@@ -212,13 +215,20 @@ class Animation {
   constructor(screen) {
     // 下に並べて置くセル
     this.bottomCells = [];
+    // 実際に動くセル
+    this.cells = [];
+    // セルの位置を覚えておく
+    // this.cells[i] の位置は this.pos[i] が覚えておく
+    this.pos = new Map();
+    // 新しいセルを出現させるときのイテレーター的な
+    this.itr = 0;
     for (let i = 0; i < 16; i++) {
       const y = Math.floor(i / 4), x = i % 4;
       const cell = new Cell(0, screen);
       cell.setPos(y, x);
       this.bottomCells.push(cell);
     }
-    this.cells = [];
+    this.screen = screen;
   }
   // 指定したセル群を移動させる -> 合体させる -> 新しい数字が表れる
   // 引数：State クラス
@@ -230,6 +240,25 @@ class Animation {
       const time = Settings.ANIMATION_GEN_TIME;
       let start = null;
 
+      // index -> 目標位置
+      let map = new Map();
+      for (const move of state.moveCells) {
+        let index = -1;
+        this.pos.forEach((value, key, map) => {
+          if (value.x === move.fx && value.y === move.fy) {
+            index = key;
+          }
+        });
+        if (index === -1) {
+          console.error("cell not found!");
+          continue;
+        }
+        map.set(index, move);
+      }
+      map.forEach((value, key, map) => {
+        this.pos.set(key, {x: value.tx, y: value.ty});
+      });
+
       const proc = (timestamp) => {
         if (!start) {
           start = timestamp;
@@ -238,9 +267,10 @@ class Animation {
         progress = Math.min(progress, 1);
 
         if (progress >= 0) {
-          for (const move of state.moveCells) {
-            this.cells[move.fy * 4 + move.fx].translate(move.fx, move.fy, move.tx, move.ty, progress);
-          }
+          map.forEach((value, key, map) => {
+            console.log(value);
+            this.cells[key].translate(value.fx, value.fy, value.tx, value.ty, progress);
+          });
         }
 
         if (progress < 1) {
@@ -248,14 +278,6 @@ class Animation {
         }
       }
       requestAnimationFrame(proc);
-
-      for (const move of state.moveCells) {
-        this.cells[move.ty * 4 + move.tx] = this.cells[move.fy * 4 + move.fx];
-      }
-    }
-    // 合体させるアニメーションと新しく現れるアニメーション
-    {
-      // next target
     }
   }
   // 数字が表れる
@@ -263,10 +285,19 @@ class Animation {
   // [y, x] 座標に num を登場させるアニメーション
   // type: アニメーションの仕方(0: 特に何も 1: 広がる感じ(ランダムに表れるやつ) 2: 広がってから落ち着く(合体するやつ))
   generate(screen, y, x, num, type=0) {
-    if (this.cells[y*4 + x]) {
-      screen.removeChild(this.cells[y*4 + x].elem);
+    let index = -1;
+    this.pos.forEach((value, key, map) => {
+      if (value.x === x && value.y === y) {
+        index = key;
+      }
+    });
+    if (index !== -1) {
+      this.cells[index].changeAttrib(num);
+      return;
     }
-    this.cells[y*4+x] = new Cell(num, screen);
+    index = this.itr++;
+    this.cells[index] = new Cell(num, screen);
+    this.pos.set(index, {x: x, y: y});
     let progress = 0;
     let start = null;
     const time = Settings.ANIMATION_GEN_TIME;
@@ -279,7 +310,7 @@ class Animation {
       progress = Math.min(progress, 1);
 
       if (progress >= 0) {
-        this.cells[y*4+x].appear(y, x, progress, type);
+        this.cells[index].appear(y, x, progress, type);
       }
 
       if (progress < 1) {
