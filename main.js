@@ -89,13 +89,13 @@ class State {
   }
   // 空き領域を配列にして返す
   getEmptyCells() {
+    let result = [];
     for (let i = 0; i < 16; i++) {
-      let result = [];
       if (this.board[i] == 0) {
         result.push(i);
       }
-      return result;
     }
+    return result;
   }
   // セルの値を書き換える(ランダムに出現するのをイメージ)
   // だけど別の用途で使ってもいいやという
@@ -198,15 +198,16 @@ class Game {
       const empty = nextState.getEmptyCells();
       const num = (Math.random() < 0.75 ? 2 : 4);
       const index = empty[Math.floor(Math.random() * empty.length)];
+      const y = Math.floor(index/4), x = index%4;
 
       // なんやかんや
+      nextState.rewriteCells(y, x, num);
 
       // アニメーション
-      this.animation.update(nextState);
+      this.animation.update(nextState, y, x, num);
 
       // state を更新
       this.state = nextState;
-      console.log(this.state.board);
     }
   }
 }
@@ -233,7 +234,7 @@ class Animation {
   // 指定したセル群を移動させる -> 合体させる -> 新しい数字が表れる
   // 引数：State クラス
   // 最後に merge したところから数字を登場させる
-  update(state) {
+  update(state, addY, addX, addNum) {
     // 移動するアニメーション
     {
       let progress = 0;
@@ -268,7 +269,6 @@ class Animation {
 
         if (progress >= 0) {
           map.forEach((value, key, map) => {
-            console.log(value);
             this.cells[key].translate(value.fx, value.fy, value.tx, value.ty, progress);
           });
         }
@@ -301,6 +301,9 @@ class Animation {
           }
         }
       }
+      // 新しく追加する数字
+      const addIndex = this.itr++;
+      this.pos.set(addIndex, {x: addX, y: addY});
 
       let progress = 0;
       const time = Settings.ANIMATION_GEN_TIME;
@@ -309,10 +312,10 @@ class Animation {
       const proc = () => {
         if (!start) {
           start = new Date();
+          this.cells[addIndex] = new Cell(addNum, this.screen);
         }
         let timestamp = new Date();
         progress = (timestamp - start) / time;
-        console.log(progress);
         progress = Math.min(progress, 1);
 
         if (progress >= 0) {
@@ -321,6 +324,7 @@ class Animation {
             this.cells[index].changeAttrib(state.board[p.y*4+p.x]);
             this.cells[index].appear(this.pos.get(index).y, this.pos.get(index).x, progress, 2);
           }
+          this.cells[addIndex].appear(addY, addX, progress, 1);
         }
 
         if (progress < 1) {
@@ -329,6 +333,7 @@ class Animation {
           for (let index of deleteIndex) {
             this.screen.removeChild(this.cells[index].elem);
             this.cells[index] = null;
+            this.pos.delete(index);
           }
         }
       }
@@ -384,7 +389,6 @@ class Cell {
     this.elem = this._initElement();
     screen.appendChild(this.elem);
     this.changeAttrib(num);
-    this.merge = false;
   }
   // 移動する
   // fx, fy: どこから
@@ -504,7 +508,6 @@ const game = new Game();
 // key 入力
 document.addEventListener("keydown", (e) => {
   global.keys[e.keyCode] = true;
-  console.log(e.keyCode);
   game.move();
 });
 document.addEventListener("keyup", (e) => {
