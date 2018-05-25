@@ -10,6 +10,27 @@
   position: relative;
 }
 
+.centering {
+  display: flex;
+  justify-content: center;
+  align-content: center;
+  padding: 5px;
+}
+
+.autoButton {
+  background-color: goldenrod;
+  font-weight: bold;
+  color: white;
+  border-style: none;
+  padding: 10px 30px;
+  font-size: 1.4em;
+}
+
+.autoButton:hover {
+  background-color: rgb(221, 179, 73);
+  cursor: pointer;
+}
+
 .gameCell {
   border-radius: 10px;
   box-sizing: border-box;

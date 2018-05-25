@@ -7,7 +7,7 @@ let Settings = {
   CELL_HEIGHT: 100,
   CELL_MARGIN: 12,
   ANIMATION_SWELLING: 8,
-  ANIMATION_GEN_TIME: 200,
+  ANIMATION_GEN_TIME: 100,
   FONT_SIZE: 40
 };
 
@@ -178,20 +178,10 @@ class Game {
     this.animation.generate(this.screen, 3, 3, 2, 1);
   }
   // キー入力に対応してゴニョゴニョする
-  move() {
+  move(dir) {
     if (this.state.isDie()) return;
-    let nextState;
-    if (global.keys[38]) { // up
-      nextState = this.state.calcNextState(0);
-    } else if (global.keys[39]) { // right
-      nextState = this.state.calcNextState(1);
-    } else if (global.keys[40]) { // down
-      nextState = this.state.calcNextState(2);
-    } else if (global.keys[37]) { // left
-      nextState = this.state.calcNextState(3);
-    } else {
-      return;
-    }
+    if (!this.animation.finish) return;
+    let nextState = this.state.calcNextState(dir);
     // いずれかのセルが動いたならば
     if (nextState.moveCells.length > 0) {
       // ランダムに数字を挿入する処理
@@ -230,11 +220,15 @@ class Animation {
       this.bottomCells.push(cell);
     }
     this.screen = screen;
+    // アニメーションが終了したかどうか
+    this.finish = true;
   }
   // 指定したセル群を移動させる -> 合体させる -> 新しい数字が表れる
   // 引数：State クラス
   // 最後に merge したところから数字を登場させる
   update(state, addY, addX, addNum) {
+    // アニメーション開始
+    this.finish = false;
     // 移動するアニメーション
     {
       let progress = 0;
@@ -330,6 +324,8 @@ class Animation {
         if (progress < 1) {
           requestAnimationFrame(proc);
         } else {
+          // アニメーション終了
+          this.finish = true;
           for (let index of deleteIndex) {
             this.screen.removeChild(this.cells[index].elem);
             this.cells[index] = null;
@@ -503,13 +499,113 @@ class Cell {
   }
 }
 
+// state 情報を読み込んで次の動きを考えてくれる AI クラス
+class GameAI {
+  constructor() {
+    this.weight = [];
+    for (let i = 0; i < 4; i++) {
+      this.weight[i] = 2**(7-i);
+    }
+    for (let i = 4; i < 8; i++) {
+      this.weight[i] = 2**(i-4);
+    }
+    for (let i = 8; i < 12; i++) {
+      this.weight[i] = -(2**(i-8));
+    }
+    for (let i = 12; i < 16; i++) {
+      this.weight[i] = -(2**(19-i));
+    }
+    console.log(this.weight);
+  }
+  evaluate(state) {
+    let result = 0;
+    for (let i = 0; i < 4; i++) {
+      let tmp = 0;
+      for (let j = 0; j < 16; j++) {
+        tmp += this.weight[j] * state.board[j];
+      }
+      result = Math.max(result, tmp);
+      this._rotate();
+    }
+    return result;
+  }
+  nextMove(state) {
+    return this._dfs(state, 0)[1];
+  }
+  _dfs(state, depth) {
+    if (depth == 2) {
+      return [this.evaluate(state), -1];
+    }
+    let ans = [-(2**30), 0];
+    for (let dir = 0; dir < 4; dir++) {
+      let nextState = state.calcNextState(dir);
+      if (nextState.moveCells.length > 0) {
+        let tmp = 0;
+        let emptyCells = nextState.getEmptyCells();
+        for (let index of emptyCells) {
+          const y = Math.floor(index/4), x = index % 4;
+          nextState.rewriteCells(y, x, 2);
+          tmp += 3 * this._dfs(nextState, depth+1)[0];
+          nextState.rewriteCells(y, x, 4);
+          tmp += this._dfs(nextState, depth+1)[0];
+        }
+        tmp /= emptyCells.length;
+        if (ans[0] < tmp) {
+          ans[0] = tmp;
+          ans[1] = dir;
+        }
+      }
+    }
+    return ans;
+  }
+  _rotate() {
+    let result = [];
+    for (let i = 0; i < 16; i++) {
+      result[i] = this.weight[i];
+    }
+    for (let y = 0; y < 4; y++) {
+      for (let x = 0; x < 4; x++) {
+        const ny = x, nx = 3-y;
+        result[ny*4+nx] = this.weight[y*4+x];
+      }
+    }
+    this.weight = result;
+  }
+}
+
 const game = new Game();
 
 // key 入力
 document.addEventListener("keydown", (e) => {
   global.keys[e.keyCode] = true;
-  game.move();
+  if (global.keys[38]) { // up
+    game.move(0);
+  } else if (global.keys[39]) { // right
+    game.move(1);
+  } else if (global.keys[40]) { // down
+    game.move(2);
+  } else if (global.keys[37]) { // left
+    game.move(3);
+  } else {
+    return;
+  }
 });
 document.addEventListener("keyup", (e) => {
   global.keys[e.keyCode] = false;
+});
+
+const elem = document.getElementById("autoButton");
+elem.addEventListener("click", (e) => {
+  if (elem.textContent === "AUTO") {
+    elem.textContent = "STOP";
+    const ai = new GameAI();
+    const dir = ai.nextMove(game.state);
+    const update = () => {
+      game.move(ai.nextMove(game.state));
+      if (elem.textContent === "STOP") requestAnimationFrame(update);
+    };
+    requestAnimationFrame(update);
+  } else {
+    elem.textContent = "AUTO";
+  }
 });
