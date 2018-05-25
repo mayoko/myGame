@@ -172,10 +172,14 @@ class Game {
     this.animation = new Animation(this.screen);
     this.state = new State();
     // 初期状態として 2 つ cell を入れておく
-    this.state.rewriteCells(2, 1, 2);
-    this.state.rewriteCells(3, 3, 2);
-    this.animation.generate(this.screen, 2, 1, 2, 1);
-    this.animation.generate(this.screen, 3, 3, 2, 1);
+    for (let i = 0; i < 2; i++) {
+      const empty = this.state.getEmptyCells();
+      const num = (Math.random() < 0.75 ? 2 : 4);
+      const index = empty[Math.floor(Math.random() * empty.length)];
+      const y = Math.floor(index/4), x = index%4;
+      this.state.rewriteCells(y, x, num);
+      this.animation.generate(this.screen, y, x, num, 1);
+    }
   }
   // キー入力に対応してゴニョゴニョする
   move(dir) {
@@ -515,7 +519,6 @@ class GameAI {
     for (let i = 12; i < 16; i++) {
       this.weight[i] = -(2**(19-i));
     }
-    console.log(this.weight);
   }
   evaluate(state) {
     let result = 0;
@@ -545,9 +548,9 @@ class GameAI {
         for (let index of emptyCells) {
           const y = Math.floor(index/4), x = index % 4;
           nextState.rewriteCells(y, x, 2);
-          tmp += 3 * this._dfs(nextState, depth+1)[0];
+          tmp += 0.75 * this._dfs(nextState, depth+1)[0];
           nextState.rewriteCells(y, x, 4);
-          tmp += this._dfs(nextState, depth+1)[0];
+          tmp += 0.25 * this._dfs(nextState, depth+1)[0];
         }
         tmp /= emptyCells.length;
         if (ans[0] < tmp) {
