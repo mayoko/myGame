@@ -1,7 +1,7 @@
 .flex-container {
   display: flex;
-  width: 500px;
-  height: 500px;
+  width: 460px;
+  height: 460px;
   flex-wrap: wrap;
   justify-content: center;
   align-content: center;

@@ -522,6 +522,18 @@ class GameAI {
   }
   evaluate(state) {
     let result = 0;
+    for (let y = 0; y < 4; y++) {
+      for (let x = 0; x < 4; x++) {
+        const dy = [0, 1, 0, -1];
+        const dx = [1, 0, -1, 0];
+        for (let k = 0; k < 4; k++) {
+          const ny = y+dy[k], nx = x+dx[k];
+          if (ny < 0 || ny >= 4 || nx < 0 || nx >= 4) continue;
+          result += Math.abs(state.board[y*4+x] - state.board[ny*4+nx]);
+        }
+      }
+    }
+    return -result;
     for (let i = 0; i < 4; i++) {
       let tmp = 0;
       for (let j = 0; j < 16; j++) {
@@ -533,10 +545,14 @@ class GameAI {
     return result;
   }
   nextMove(state) {
-    return this._dfs(state, 0)[1];
+    let maxDepth = 2;
+    if (state.getEmptyCells().length < 6) {
+      maxDepth = 3;
+    }
+    return this._dfs(state, 0, maxDepth)[1];
   }
-  _dfs(state, depth) {
-    if (depth == 2) {
+  _dfs(state, depth, maxDepth) {
+    if (depth == maxDepth) {
       return [this.evaluate(state), -1];
     }
     let ans = [-(2**30), 0];
@@ -548,9 +564,9 @@ class GameAI {
         for (let index of emptyCells) {
           const y = Math.floor(index/4), x = index % 4;
           nextState.rewriteCells(y, x, 2);
-          tmp += 0.75 * this._dfs(nextState, depth+1)[0];
+          tmp += 0.75 * this._dfs(nextState, depth+1, maxDepth)[0];
           nextState.rewriteCells(y, x, 4);
-          tmp += 0.25 * this._dfs(nextState, depth+1)[0];
+          tmp += 0.25 * this._dfs(nextState, depth+1, maxDepth)[0];
         }
         tmp /= emptyCells.length;
         if (ans[0] < tmp) {
