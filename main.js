@@ -174,7 +174,7 @@ class Game {
     // 初期状態として 2 つ cell を入れておく
     for (let i = 0; i < 2; i++) {
       const empty = this.state.getEmptyCells();
-      const num = (Math.random() < 0.75 ? 2 : 4);
+      const num = (Math.random() < 0.9 ? 2 : 4);
       const index = empty[Math.floor(Math.random() * empty.length)];
       const y = Math.floor(index/4), x = index%4;
       this.state.rewriteCells(y, x, num);
@@ -190,7 +190,7 @@ class Game {
     if (nextState.moveCells.length > 0) {
       // ランダムに数字を挿入する処理
       const empty = nextState.getEmptyCells();
-      const num = (Math.random() < 0.75 ? 2 : 4);
+      const num = (Math.random() < 0.9 ? 2 : 4);
       const index = empty[Math.floor(Math.random() * empty.length)];
       const y = Math.floor(index/4), x = index%4;
 
@@ -505,90 +505,60 @@ class Cell {
 
 // state 情報を読み込んで次の動きを考えてくれる AI クラス
 class GameAI {
-  constructor() {
-    this.weight = [];
-    for (let i = 0; i < 4; i++) {
-      this.weight[i] = 2**(7-i);
-    }
-    for (let i = 4; i < 8; i++) {
-      this.weight[i] = 2**(i-4);
-    }
-    for (let i = 8; i < 12; i++) {
-      this.weight[i] = -(2**(i-8));
-    }
-    for (let i = 12; i < 16; i++) {
-      this.weight[i] = -(2**(19-i));
-    }
-  }
-  evaluate(state) {
-    let result = 0;
-    for (let y = 0; y < 4; y++) {
-      for (let x = 0; x < 4; x++) {
-        const dy = [0, 1, 0, -1];
-        const dx = [1, 0, -1, 0];
-        for (let k = 0; k < 4; k++) {
-          const ny = y+dy[k], nx = x+dx[k];
-          if (ny < 0 || ny >= 4 || nx < 0 || nx >= 4) continue;
-          result += Math.abs(state.board[y*4+x] - state.board[ny*4+nx]);
-        }
-      }
-    }
-    return -result;
-    for (let i = 0; i < 4; i++) {
-      let tmp = 0;
-      for (let j = 0; j < 16; j++) {
-        tmp += this.weight[j] * state.board[j];
-      }
-      result = Math.max(result, tmp);
-      this._rotate();
-    }
-    return result;
-  }
   nextMove(state) {
-    let maxDepth = 2;
-    if (state.getEmptyCells().length < 6) {
-      maxDepth = 3;
+    const maxDepth = 50;
+    const iterateCount = 10000;
+    let aliveCount = [0, 0, 0, 0];
+    let triedCount = [0, 0, 0, 0];
+    // 移動可能な方向はさすがに覚えておく
+    let canMove = [];
+    for (let dir = 0; dir < 4; ++dir) {
+      let nextState = state.calcNextState(dir);
+      if (nextState.moveCells.length > 0) {
+        canMove.push(dir);
+      }
     }
-    return this._dfs(state, 0, maxDepth)[1];
+    // もう動けなかったらどうしようもねぇ
+    if (canMove.length === 0) return 0;
+    if (canMove.length === 1) {
+      return canMove[0];
+    } else {
+      for (let itr = 0; itr < iterateCount; ++itr) {
+        const dir = canMove[Math.floor(Math.random() * canMove.length)];
+        let nextState = state.calcNextState(dir);
+        triedCount[dir]++;
+        aliveCount[dir] += this._dfs(nextState, 1, maxDepth);
+      }
+    }
+    let ans = -1;
+    let maxE = -1;
+    for (let i = 0; i < 4; i++) {
+      if (triedCount[i] === 0) continue;
+      const e = aliveCount[i] / triedCount[i];
+      if (maxE < e) {
+        maxE = e;
+        ans = i;
+      }
+    }
+    console.log(maxE);
+    return ans;
   }
   _dfs(state, depth, maxDepth) {
     if (depth == maxDepth) {
-      return [this.evaluate(state), -1];
+      //return depth;
+      return 1;
     }
-    let ans = [-(2**30), 0];
-    for (let dir = 0; dir < 4; dir++) {
-      let nextState = state.calcNextState(dir);
-      if (nextState.moveCells.length > 0) {
-        let tmp = 0;
-        let emptyCells = nextState.getEmptyCells();
-        for (let index of emptyCells) {
-          const y = Math.floor(index/4), x = index % 4;
-          nextState.rewriteCells(y, x, 2);
-          tmp += 0.75 * this._dfs(nextState, depth+1, maxDepth)[0];
-          nextState.rewriteCells(y, x, 4);
-          tmp += 0.25 * this._dfs(nextState, depth+1, maxDepth)[0];
-        }
-        tmp /= emptyCells.length;
-        if (ans[0] < tmp) {
-          ans[0] = tmp;
-          ans[1] = dir;
-        }
-      }
+    const emptyCells = state.getEmptyCells();
+    if (emptyCells.length > 0) {
+      const index = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+      const y = Math.floor(index/4), x = index % 4;
+      const num = (Math.random() < 0.9 ? 2 : 4);
+      state.rewriteCells(y, x, num);
     }
-    return ans;
-  }
-  _rotate() {
-    let result = [];
-    for (let i = 0; i < 16; i++) {
-      result[i] = this.weight[i];
-    }
-    for (let y = 0; y < 4; y++) {
-      for (let x = 0; x < 4; x++) {
-        const ny = x, nx = 3-y;
-        result[ny*4+nx] = this.weight[y*4+x];
-      }
-    }
-    this.weight = result;
+    if (state.isDie()) return 0;
+    const dir = Math.floor(Math.random() * 4);
+    state = state.calcNextState(dir);
+    return this._dfs(state, depth+1, maxDepth);
   }
 }
 
@@ -620,10 +590,11 @@ elem.addEventListener("click", (e) => {
     const ai = new GameAI();
     const dir = ai.nextMove(game.state);
     const update = () => {
-      game.move(ai.nextMove(game.state));
-      if (elem.textContent === "STOP") requestAnimationFrame(update);
+      const dir = ai.nextMove(game.state);
+      game.move(dir);
+      if (elem.textContent === "STOP") setTimeout(update, 300);
     };
-    requestAnimationFrame(update);
+    setTimeout(update, 100);
   } else {
     elem.textContent = "AUTO";
   }
